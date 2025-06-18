@@ -29,13 +29,9 @@ pipeline {
             withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
               dir("${TF_DIR}") {
                 sh '''
-                  terraform init -reconfigure \
-                    -backend-config="bucket=lsg-terraform-s3-bucket" \
-                    -backend-config="key=dev/devops-cicd/ap-south-1.tfstate" \
-                    -backend-config="region=ap-south-1" \
-                    -backend-config="dynamodb_table=terraform-lock" \
-                    -backend-config="encrypt=true" \
-                    -input=false
+                  cp backend-ap-south-1.tf backend.tf
+                  terraform init -input=false
+                  rm -f backend.tf
                 '''
               }
             }
@@ -47,13 +43,9 @@ pipeline {
             withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
               dir("${TF_DIR}") {
                 sh '''
-                  terraform init -reconfigure \
-                    -backend-config="bucket=lsg-terraform-s3-bucket-us-east" \
-                    -backend-config="key=dev/devops-cicd/us-east-1.tfstate" \
-                    -backend-config="region=us-east-1" \
-                    -backend-config="dynamodb_table=terraform-lock-us-east" \
-                    -backend-config="encrypt=true" \
-                    -input=false
+                  cp backend-us-east-1.tf backend.tf
+                  terraform init -input=false
+                  rm -f backend.tf
                 '''
               }
             }
