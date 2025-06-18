@@ -1,17 +1,22 @@
-- name: Add Node.js 16.x repository (Amazon Linux 2 compatible)
-  shell: curl -fsSL https://rpm.nodesource.com/setup_16.x | bash -
-  args:
-    executable: /bin/bash
+- name: Install Node.js 16 on Amazon Linux 2
+  hosts: webservers
+  become: yes
 
-- name: Install Node.js 16
-  yum:
-    name: nodejs
-    state: present
+  tasks:
+    - name: Add Node.js 16.x repository
+      shell: curl -fsSL https://rpm.nodesource.com/setup_16.x | bash -
+      args:
+        executable: /bin/bash
 
-- name: Verify Node.js version
-  command: node -v
-  register: node_version
+    - name: Install Node.js 16
+      yum:
+        name: nodejs
+        state: present
 
-- name: Print Node.js version
-  debug:
-    var: node_version.stdout
+    - name: Verify Node.js version
+      command: node -v
+      register: node_version
+
+    - name: Print Node.js version
+      debug:
+        var: node_version.stdout
