@@ -23,42 +23,80 @@ pipeline {
     }
 
     stage('Terraform Init') {
-      steps {
-        withCredentials([[
-          $class: 'AmazonWebServicesCredentialsBinding',
-          credentialsId: 'aws-credentials'
-        ]]) {
-          dir("${TF_DIR}") {
-            sh '''
-              terraform init \
-                -backend-config="bucket=lsg-terraform-s3-bucket" \
-                -backend-config="key=dev/devops-cicd/terraform.tfstate" \
-                -backend-config="region=ap-south-1" \
-                -backend-config="dynamodb_table=terraform-lock" \
-                -backend-config="encrypt=true" \
-                -input=false
-            '''
+      parallel {
+        stage('Init ap-south-1') {
+          steps {
+            withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
+              dir("${TF_DIR}") {
+                sh '''
+                  terraform init \
+                    -backend-config="bucket=lsg-terraform-s3-bucket" \
+                    -backend-config="key=dev/devops-cicd/ap-south-1.tfstate" \
+                    -backend-config="region=ap-south-1" \
+                    -backend-config="dynamodb_table=terraform-lock" \
+                    -backend-config="encrypt=true" \
+                    -input=false
+                '''
+              }
+            }
+          }
+        }
+
+        stage('Init us-east-1') {
+          steps {
+            withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
+              dir("${TF_DIR}") {
+                sh '''
+                  terraform init \
+                    -backend-config="bucket=lsg-terraform-s3-bucket" \
+                    -backend-config="key=dev/devops-cicd/us-east-1.tfstate" \
+                    -backend-config="region=us-east-1" \
+                    -backend-config="dynamodb_table=terraform-lock" \
+                    -backend-config="encrypt=true" \
+                    -input=false
+                '''
+              }
+            }
           }
         }
       }
     }
 
     stage('Terraform Apply/Destroy') {
-      steps {
-        withCredentials([[
-          $class: 'AmazonWebServicesCredentialsBinding',
-          credentialsId: 'aws-credentials'
-        ]]) {
-          dir("${TF_DIR}") {
-            script {
-              if (params.ACTION == 'destroy') {
-                echo "🗑️ Destroying infrastructure..."
-                sh 'terraform destroy -auto-approve'
-                // sh 'terraform destroy -auto-approve -var-file="us-east-1.tfvars"'
-              } else {
-                echo "🚀 Creating infrastructure..."
-                sh 'terraform apply -auto-approve'
-                // sh 'terraform apply -auto-approve -var-file="us-east-1.tfvars"'
+      parallel {
+        stage('ap-south-1 Infra') {
+          steps {
+            withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
+              dir("${TF_DIR}") {
+                script {
+                  def tfFile = "terraform-ap-south-1.tfvars"
+                  if (params.ACTION == 'destroy') {
+                    echo "🗑️ Destroying ap-south-1 infrastructure..."
+                    sh "terraform destroy -auto-approve -var-file=${tfFile}"
+                  } else {
+                    echo "🚀 Creating ap-south-1 infrastructure..."
+                    sh "terraform apply -auto-approve -var-file=${tfFile}"
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        stage('us-east-1 Infra') {
+          steps {
+            withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
+              dir("${TF_DIR}") {
+                script {
+                  def tfFile = "terraform-us-east-1.tfvars"
+                  if (params.ACTION == 'destroy') {
+                    echo "🗑️ Destroying us-east-1 infrastructure..."
+                    sh "terraform destroy -auto-approve -var-file=${tfFile}"
+                  } else {
+                    echo "🚀 Creating us-east-1 infrastructure..."
+                    sh "terraform apply -auto-approve -var-file=${tfFile}"
+                  }
+                }
               }
             }
           }
@@ -71,13 +109,10 @@ pipeline {
         expression { return params.ACTION == 'create' }
       }
       steps {
-        echo '⏳ Waiting 60 seconds for EC2 instance to initialize...'
+        echo '⏳ Waiting for EC2 instance to initialize...'
         sleep time: 60, unit: 'SECONDS'
 
-        withCredentials([[ 
-          $class: 'AmazonWebServicesCredentialsBinding',
-          credentialsId: 'aws-credentials'
-        ]]) {
+        withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
           dir("${TF_DIR}") {
             script {
               def publicIp = sh(script: "terraform output -raw ec2_public_ip", returnStdout: true).trim()
