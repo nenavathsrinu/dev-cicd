@@ -1,20 +1,20 @@
 pipeline {
   agent any
 
-  environment {
-    TF_DIR = 'terraform'
-    ANSIBLE_DIR = 'ansible'
-    SSH_KEY_PATH = '/var/lib/jenkins/.ssh/id_rsa'
-  }
-
   parameters {
     choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Choose whether to create or destroy the infrastructure')
+  }
+
+  environment {
+    TF_DIR = "terraform"
+    ANSIBLE_DIR = "ansible"
+    SSH_KEY_PATH = "~/.ssh/id_rsa" // Update if you use a different key
   }
 
   stages {
     stage('Checkout Code') {
       steps {
-        git branch: 'main', url: 'https://github.com/nenavathsrinu/dev-cicd.git'
+        git url: 'https://github.com/nenavathsrinu/dev-cicd.git', branch: 'main'
       }
     }
 
@@ -26,22 +26,33 @@ pipeline {
         ]]) {
           dir("${TF_DIR}") {
             script {
-              sh '''
-                terraform init -backend-config=bucket=lsg-terraform-s3-bucket \
-                               -backend-config=key=dev/devops-cicd/terraform.tfstate \
-                               -backend-config=region=ap-south-1 \
-                               -backend-config=dynamodb_table=terraform-lock \
-                               -backend-config=encrypt=true
-              '''
+              sh """
+                terraform init \
+                  -backend-config=bucket=lsg-terraform-s3-bucket \
+                  -backend-config=key=dev/devops-cicd/terraform.tfstate \
+                  -backend-config=region=ap-south-1 \
+                  -backend-config=dynamodb_table=terraform-lock \
+                  -backend-config=encrypt=true
+              """
 
               if (params.ACTION == 'create') {
-                sh 'terraform apply -auto-approve'
+                sh "terraform apply -auto-approve"
               } else {
-                sh 'terraform destroy -auto-approve'
+                sh "terraform destroy -auto-approve"
               }
             }
           }
         }
+      }
+    }
+
+    stage('Wait for EC2 to Boot') {
+      when {
+        expression { params.ACTION == 'create' }
+      }
+      steps {
+        echo "⏳ Waiting 60 seconds for EC2 instance to boot and allow SSH..."
+        sleep(time: 60, unit: 'SECONDS')
       }
     }
 
@@ -50,18 +61,23 @@ pipeline {
         expression { params.ACTION == 'create' }
       }
       steps {
-        script {
-          def publicIp = sh(
-            script: "terraform -chdir=${TF_DIR} output -raw ec2_public_ip",
-            returnStdout: true
-          ).trim()
+        withCredentials([[
+          $class: 'AmazonWebServicesCredentialsBinding',
+          credentialsId: 'aws-credentials'
+        ]]) {
+          script {
+            def publicIp = sh(
+              script: "terraform -chdir=${TF_DIR} output -raw ec2_public_ip",
+              returnStdout: true
+            ).trim()
 
-          echo "✅ EC2 Public IP: ${publicIp}"
+            echo "✅ EC2 Public IP: ${publicIp}"
 
-          writeFile file: "${ANSIBLE_DIR}/inventory.ini", text: """
+            writeFile file: "${ANSIBLE_DIR}/inventory.ini", text: """
 [web]
 ${publicIp} ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}
 """
+          }
         }
       }
     }
@@ -72,30 +88,24 @@ ${publicIp} ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}
       }
       steps {
         script {
+          def retries = 5
+          def success = false
           def ip = sh(script: "terraform -chdir=${TF_DIR} output -raw ec2_public_ip", returnStdout: true).trim()
 
-          echo "⏳ Waiting for SSH on ${ip}..."
-          def reachable = false
-          for (int i = 0; i < 6; i++) {
-            def result = sh(
-              script: "ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_PATH} ec2-user@${ip} 'echo ready' || true",
-              returnStdout: true
-            ).trim()
-
-            if (result.contains("ready")) {
-              reachable = true
+          for (int i = 0; i < retries; i++) {
+            def result = sh(script: "nc -zv ${ip} 22", returnStatus: true)
+            if (result == 0) {
+              echo "✅ SSH is available on ${ip}"
+              success = true
               break
-            } else {
-              echo "❌ SSH not ready, retrying in 10 seconds..."
-              sleep 10
             }
+            echo "🔁 Waiting for SSH on ${ip} (attempt ${i + 1}/$retries)"
+            sleep(time: 10, unit: 'SECONDS')
           }
 
-          if (!reachable) {
-            error("❌ Instance not reachable over SSH within timeout.")
+          if (!success) {
+            error("❌ SSH is not available on ${ip}")
           }
-
-          echo "✅ SSH is now available."
         }
       }
     }
@@ -106,7 +116,7 @@ ${publicIp} ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}
       }
       steps {
         dir("${ANSIBLE_DIR}") {
-          sh 'ansible-playbook -i inventory.ini site.yml'
+          sh "ansible-playbook -i inventory.ini install-node.yml"
         }
       }
     }
@@ -114,10 +124,16 @@ ${publicIp} ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}
 
   post {
     success {
-      echo '✅ Pipeline completed successfully!'
+      script {
+        if (params.ACTION == 'create') {
+          echo "✅ Infrastructure created and configured successfully!"
+        } else {
+          echo "✅ Infrastructure destroyed successfully!"
+        }
+      }
     }
     failure {
-      echo '❌ Pipeline failed. Please check the logs.'
+      echo "❌ Pipeline failed. Please check the logs."
     }
   }
 }
