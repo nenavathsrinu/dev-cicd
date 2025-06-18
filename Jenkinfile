@@ -31,7 +31,6 @@ pipeline {
               sh """
                 cp ${backendFile} backend.tf
                 terraform init -reconfigure
-                rm -f backend.tf
               """
             }
           }
@@ -47,7 +46,6 @@ pipeline {
               def tfvars = "terraform-${params.REGION}.tfvars"
               echo "📄 Using tfvars file: ${tfvars}"
 
-              // Debug file presence
               sh """
                 echo '📁 Current directory:' && pwd
                 echo '📄 Listing tfvars files:' && ls -l *.tfvars || true
@@ -60,6 +58,8 @@ pipeline {
                 echo "🚀 Creating ${params.REGION} infrastructure..."
                 sh "terraform apply -auto-approve -var-file=${tfvars}"
               }
+
+              sh "rm -f backend.tf"
             }
           }
         }
