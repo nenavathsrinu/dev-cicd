@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   parameters {
-    choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Choose whether to create or destroy infrastructure.')
+    choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Choose whether to create or destroy the infrastructure.')
     choice(name: 'REGION', choices: ['ap-south-1', 'us-east-1'], description: 'Select AWS Region')
   }
 
@@ -25,10 +25,13 @@ pipeline {
         withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
           dir("${TF_DIR}") {
             script {
-              echo "🌍 Initializing backend for region: ${params.REGION}"
+              def backendFile = "backend/backend-${params.REGION}.tf"
+              echo "📁 Using backend file: ${backendFile}"
+
               sh """
-                cp backend/backend-${params.REGION}.tf backend.tf
+                cp ${backendFile} backend.tf
                 terraform init -reconfigure
+                rm -f backend.tf
               """
             }
           }
@@ -36,12 +39,20 @@ pipeline {
       }
     }
 
-    stage('Terraform Apply/Destroy') {
+    stage('Terraform Apply or Destroy') {
       steps {
         withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
           dir("${TF_DIR}") {
             script {
               def tfvars = "terraform-${params.REGION}.tfvars"
+              echo "📄 Using tfvars file: ${tfvars}"
+
+              // Debug file presence
+              sh """
+                echo '📁 Current directory:' && pwd
+                echo '📄 Listing tfvars files:' && ls -l *.tfvars || true
+              """
+
               if (params.ACTION == 'destroy') {
                 echo "🗑️ Destroying ${params.REGION} infrastructure..."
                 sh "terraform destroy -auto-approve -var-file=${tfvars}"
@@ -94,9 +105,6 @@ ${publicIp} ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}
   }
 
   post {
-    always {
-      cleanWs()
-    }
     failure {
       echo "❌ Pipeline failed. Please check the logs."
     }
