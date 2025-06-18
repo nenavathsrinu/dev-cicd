@@ -2,7 +2,8 @@
 - name: Configure Web Server and Deploy App
   hosts: web
   become: yes
-
+  collections:
+    - amazon.aws
   vars:
     app_dir: /var/www/myapp
     repo_url: "https://github.com/nenavathsrinu/dev-cicd.git"
