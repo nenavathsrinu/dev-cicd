@@ -9,21 +9,25 @@
 
   tasks:
 
-    - name: Enable nginx via amazon-linux-extras (for Amazon Linux 2)
+    - name: Enable nginx via amazon-linux-extras
       shell: |
         amazon-linux-extras enable nginx1
         yum clean metadata
+        yum install -y nginx
       args:
         executable: /bin/bash
 
-    - name: Install Git, Node.js, and Nginx
-      package:
-        name:
-          - git
-          - nginx
-          - nodejs
-          - npm
+    - name: Install Git
+      yum:
+        name: git
         state: present
+
+    - name: Install Node.js using NodeSource
+      shell: |
+        curl -sL https://rpm.nodesource.com/setup_18.x | bash -
+        yum install -y nodejs
+      args:
+        executable: /bin/bash
 
     - name: Enable and start Nginx
       systemd:
