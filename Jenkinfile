@@ -1,12 +1,6 @@
 pipeline {
     agent any
 
-    environment {
-        TF_VAR_key_pair_name = "jenkins-key"
-        TF_VAR_instance_type = "t2.micro"
-        TF_VAR_ami_id = "ami-0c55b159cbfafe1f0"
-    }
-
     parameters {
         choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Choose whether to create or destroy infrastructure')
     }
@@ -41,9 +35,9 @@ pipeline {
                     dir('terraform') {
                         script {
                             if (params.ACTION == 'create') {
-                                sh 'terraform apply -auto-approve'
+                                sh 'terraform apply -auto-approve -var-file="dev.tfvars"'
                             } else {
-                                sh 'terraform destroy -auto-approve'
+                                sh 'terraform destroy -auto-approve -var-file="dev.tfvars"'
                             }
                         }
                     }
