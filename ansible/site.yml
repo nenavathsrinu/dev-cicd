@@ -1,8 +1,12 @@
 ---
-- name: Install Node.js 16 via NVM on Amazon Linux 2
+- name: Install Node.js 16 and deploy app from GitHub
   hosts: web
   become: true
   become_user: ec2-user
+
+  vars:
+    app_repo: "https://github.com/nenavathsrinu/dev-cicd.git"
+    app_path: "/home/ec2-user/dev-cicd"
 
   tasks:
     - name: Install dependencies
@@ -11,39 +15,63 @@
           - gcc-c++
           - make
           - curl
+          - git
         state: present
 
     - name: Download and install NVM
       shell: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
       args:
         executable: /bin/bash
+        chdir: /home/ec2-user
 
     - name: Add NVM to bash profile
-      lineinfile:
+      blockinfile:
         path: /home/ec2-user/.bashrc
-        line: |
+        marker: "# {mark} ANSIBLE MANAGED BLOCK FOR NVM"
+        block: |
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
           [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
     - name: Load NVM and install Node.js 16
       shell: |
-        source /home/ec2-user/.bashrc
-        . ~/.nvm/nvm.sh
+        source ~/.bashrc
         nvm install 16
         nvm alias default 16
       args:
         executable: /bin/bash
 
-    - name: Check Node.js version
+    - name: Clone the application repo
+      git:
+        repo: "{{ app_repo }}"
+        dest: "{{ app_path }}"
+        version: main
+        force: yes
+
+    - name: Install Node.js dependencies
       shell: |
-        source /home/ec2-user/.bashrc
-        . ~/.nvm/nvm.sh
+        source ~/.bashrc
+        cd {{ app_path }}
+        npm install
+      args:
+        executable: /bin/bash
+
+    - name: Start the Node.js app
+      shell: |
+        source ~/.bashrc
+        cd {{ app_path }}
+        nohup node app.js > app.log 2>&1 &
+      args:
+        executable: /bin/bash
+
+    - name: Show deployed Node.js version
+      shell: |
+        source ~/.bashrc
         node -v
       register: node_version
       args:
         executable: /bin/bash
 
-    - name: Display installed Node.js version
+    - name: Display Node.js version
       debug:
-        msg: "Installed Node.js version is {{ node_version.stdout }}"
+        msg: "✅ Node.js version: {{ node_version.stdout }}"
