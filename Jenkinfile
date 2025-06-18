@@ -35,9 +35,9 @@ pipeline {
                     dir('terraform') {
                         script {
                             if (params.ACTION == 'create') {
-                                sh 'terraform apply -auto-approve -var-file="dev.tfvars"'
+                                sh 'terraform apply -auto-approve"'
                             } else {
-                                sh 'terraform destroy -auto-approve -var-file="dev.tfvars"'
+                                sh 'terraform destroy -auto-approve'
                             }
                         }
                     }
