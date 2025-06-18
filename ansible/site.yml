@@ -22,9 +22,9 @@
         name: git
         state: present
 
-    - name: Install Node.js using NodeSource
+    - name: Install Node.js 16.x using NodeSource
       shell: |
-        curl -sL https://rpm.nodesource.com/setup_18.x | bash -
+        curl -sL https://rpm.nodesource.com/setup_16.x | bash -
         yum install -y nodejs
       args:
         executable: /bin/bash
