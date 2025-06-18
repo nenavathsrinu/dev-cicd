@@ -46,7 +46,7 @@ pipeline {
     stage('Run Ansible Playbook') {
       steps {
         dir("${ANSIBLE_DIR}") {
-          sh 'ansible-playbook -i inventory.ini playbook.yml'
+          sh 'ansible-playbook -i inventory.ini site.yml'
         }
       }
     }
