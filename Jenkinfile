@@ -26,8 +26,7 @@ pipeline {
           dir("${TF_DIR}") {
             script {
               def backendFile = "backend/backend-${params.REGION}.tf"
-              echo "📁 Using backend file: ${backendFile}"
-
+              echo "🔧 Using backend: ${backendFile}"
               sh """
                 cp ${backendFile} backend.tf
                 terraform init -reconfigure
@@ -38,28 +37,21 @@ pipeline {
       }
     }
 
-    stage('Terraform Apply or Destroy') {
+    stage('Terraform Apply/Destroy') {
       steps {
         withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
           dir("${TF_DIR}") {
             script {
-              def tfvars = "terraform-${params.REGION}.tfvars"
-              echo "📄 Using tfvars file: ${tfvars}"
-
-              sh """
-                echo '📁 Current directory:' && pwd
-                echo '📄 Listing tfvars files:' && ls -l *.tfvars || true
-              """
-
+              def tfFile = "terraform-${params.REGION}.tfvars"
+              echo "📄 Using tfvars file: ${tfFile}"
+              sh "ls -l ${tfFile}"
               if (params.ACTION == 'destroy') {
                 echo "🗑️ Destroying ${params.REGION} infrastructure..."
-                sh "terraform destroy -auto-approve -var-file=${tfvars}"
+                sh "terraform destroy -auto-approve -var-file=${tfFile}"
               } else {
                 echo "🚀 Creating ${params.REGION} infrastructure..."
-                sh "terraform apply -auto-approve -var-file=${tfvars}"
+                sh "terraform apply -auto-approve -var-file=${tfFile}"
               }
-
-              sh "rm -f backend.tf"
             }
           }
         }
@@ -105,9 +97,17 @@ ${publicIp} ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}
   }
 
   post {
+    always {
+      echo "🧹 Cleaning up backend.tf"
+      dir("${TF_DIR}") {
+        sh 'rm -f backend.tf'
+      }
+    }
+
     failure {
       echo "❌ Pipeline failed. Please check the logs."
     }
+
     success {
       echo "✅ Pipeline executed successfully."
     }
