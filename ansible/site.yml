@@ -1,27 +1,48 @@
 ---
-- name: Install Node.js 16 on Amazon Linux 2
+- name: Install Node.js 16 via NVM on Amazon Linux 2
   hosts: web
-  become: yes
+  become: true
+  become_user: ec2-user
 
   tasks:
-    - name: Ensure curl is installed
+    - name: Install dependencies
       yum:
-        name: curl
+        name:
+          - gcc-c++
+          - make
+          - curl
         state: present
 
-    - name: Add Node.js 16.x repository
-      shell: curl -fsSL https://rpm.nodesource.com/setup_16.x | bash -
+    - name: Download and install NVM
+      shell: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
       args:
         executable: /bin/bash
 
-    - name: Install Node.js 16
-      yum:
-        name: nodejs
-        state: present
+    - name: Add NVM to bash profile
+      lineinfile:
+        path: /home/ec2-user/.bashrc
+        line: |
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+    - name: Load NVM and install Node.js 16
+      shell: |
+        source /home/ec2-user/.bashrc
+        . ~/.nvm/nvm.sh
+        nvm install 16
+        nvm alias default 16
+      args:
+        executable: /bin/bash
 
     - name: Check Node.js version
-      command: node -v
+      shell: |
+        source /home/ec2-user/.bashrc
+        . ~/.nvm/nvm.sh
+        node -v
       register: node_version
+      args:
+        executable: /bin/bash
 
     - name: Display installed Node.js version
       debug:
