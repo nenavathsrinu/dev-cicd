@@ -1,91 +1,111 @@
 pipeline {
-    agent any
+  agent any
 
-    parameters {
-        choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Choose whether to create or destroy infrastructure')
+  parameters {
+    choice(
+      name: 'ACTION',
+      choices: ['create', 'destroy'],
+      description: 'Choose whether to create or destroy the infrastructure.'
+    )
+  }
+
+  environment {
+    TF_DIR = 'terraform'
+    ANSIBLE_DIR = 'ansible'
+    SSH_KEY_PATH = '/var/lib/jenkins/.ssh/id_rsa'
+  }
+
+  stages {
+    stage('Checkout Code') {
+      steps {
+        checkout scm
+      }
     }
 
-    stages {
-        stage('Terraform Init') {
-            steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-credentials'
-                ]]) {
-                    dir('terraform') {
-                        sh '''
-                            terraform init \
-                                -backend-config=bucket=lsg-terraform-s3-bucket \
-                                -backend-config=key=dev/devops-cicd/terraform.tfstate \
-                                -backend-config=region=ap-south-1 \
-                                -backend-config=dynamodb_table=terraform-lock \
-                                -backend-config=encrypt=true
-                        '''
-                    }
-                }
-            }
+    stage('Terraform Init') {
+      steps {
+        withCredentials([[
+          $class: 'AmazonWebServicesCredentialsBinding',
+          credentialsId: 'aws-credentials'
+        ]]) {
+          dir("${TF_DIR}") {
+            sh '''
+              terraform init \
+                -backend-config="bucket=lsg-terraform-s3-bucket" \
+                -backend-config="key=dev/devops-cicd/terraform.tfstate" \
+                -backend-config="region=ap-south-1" \
+                -backend-config="dynamodb_table=terraform-lock" \
+                -backend-config="encrypt=true" \
+                -input=false
+            '''
+          }
         }
-
-        stage('Terraform Apply or Destroy') {
-            steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-credentials'
-                ]]) {
-                    dir('terraform') {
-                        script {
-                            if (params.ACTION == 'create') {
-                                sh 'terraform apply -auto-approve"'
-                            } else {
-                                sh 'terraform destroy -auto-approve'
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Wait and Generate Inventory') {
-            when {
-                expression { params.ACTION == 'create' }
-            }
-            steps {
-                script {
-                    echo "Waiting 60 seconds for EC2 instance to initialize..."
-                    sleep(time: 60, unit: "SECONDS")
-                }
-
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-credentials'
-                ]]) {
-                    dir('terraform') {
-                        script {
-                            def publicIp = sh(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
-                            writeFile file: '../ansible/inventory.ini', text: "${publicIp} ansible_user=ec2-user ansible_ssh_private_key_file=/var/lib/jenkins/.ssh/id_rsa\n"
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Run Ansible Playbook') {
-            when {
-                expression { params.ACTION == 'create' }
-            }
-            steps {
-                sh '''
-                    chmod 600 /var/lib/jenkins/.ssh/id_rsa
-                    export ANSIBLE_CONFIG=ansible/ansible.cfg
-                    ansible-playbook -i ansible/inventory.ini ansible/site.yml
-                '''
-            }
-        }
+      }
     }
 
-    post {
-        failure {
-            echo "❌ Pipeline failed. Please check the logs."
+    stage('Terraform Apply/Destroy') {
+      steps {
+        withCredentials([[
+          $class: 'AmazonWebServicesCredentialsBinding',
+          credentialsId: 'aws-credentials'
+        ]]) {
+          dir("${TF_DIR}") {
+            script {
+              if (params.ACTION == 'destroy') {
+                echo "🗑️ Destroying infrastructure..."
+                sh 'terraform destroy -auto-approve'
+              } else {
+                echo "🚀 Creating infrastructure..."
+                sh 'terraform apply -auto-approve'
+              }
+            }
+          }
         }
+      }
     }
+
+    stage('Wait and Generate Inventory') {
+      when {
+        expression { return params.ACTION == 'create' }
+      }
+      steps {
+        echo '⏳ Waiting 60 seconds for EC2 instance to initialize...'
+        sleep time: 60, unit: 'SECONDS'
+
+        dir("${TF_DIR}") {
+          script {
+            def publicIp = sh(script: "terraform output -raw ec2_public_ip", returnStdout: true).trim()
+            echo "📡 EC2 Public IP: ${publicIp}"
+
+            writeFile file: "../${ANSIBLE_DIR}/inventory.ini", text: """[web]
+${publicIp} ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}
+"""
+          }
+        }
+      }
+    }
+
+    stage('Run Ansible Playbook') {
+      when {
+        expression { return params.ACTION == 'create' }
+      }
+      steps {
+        dir("${ANSIBLE_DIR}") {
+          sh '''
+            chmod 600 ${SSH_KEY_PATH}
+            ansible-playbook -i inventory.ini site.yml
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    failure {
+      echo "❌ Pipeline failed. Please check the logs."
+    }
+    success {
+      echo "✅ Pipeline executed successfully."
+    }
+  }
 }
