@@ -1,14 +1,14 @@
 pipeline {
   agent any
 
-  parameters {
-    choice(name: 'create_or_destroy', choices: ['create', 'destroy'], description: 'Choose whether to create or destroy infrastructure')
-  }
-
   environment {
     TF_DIR = 'terraform'
     ANSIBLE_DIR = 'ansible'
     SSH_KEY_PATH = '/var/lib/jenkins/.ssh/id_rsa'
+  }
+
+  parameters {
+    choice(name: 'CREATE_OR_DESTROY', choices: ['create', 'destroy'], description: 'Choose to create or destroy infrastructure')
   }
 
   stages {
@@ -19,20 +19,7 @@ pipeline {
       }
     }
 
-    stage('Terraform Init') {
-      steps {
-        withCredentials([[
-          $class: 'AmazonWebServicesCredentialsBinding',
-          credentialsId: 'aws-credentials'
-        ]]) {
-          dir("${TF_DIR}") {
-            sh 'terraform init'
-          }
-        }
-      }
-    }
-
-    stage('Terraform Apply or Destroy') {
+    stage('Terraform Init & Action') {
       steps {
         withCredentials([[
           $class: 'AmazonWebServicesCredentialsBinding',
@@ -40,9 +27,18 @@ pipeline {
         ]]) {
           dir("${TF_DIR}") {
             script {
-              if (params.create_or_destroy == 'create') {
+              sh '''
+                terraform init \
+                  -backend-config="bucket=lsg-terraform-s3-bucket" \
+                  -backend-config="key=dev/devops-cicd/terraform.tfstate" \
+                  -backend-config="region=ap-south-1" \
+                  -backend-config="dynamodb_table=terraform-lock" \
+                  -backend-config="encrypt=true"
+              '''
+
+              if (params.CREATE_OR_DESTROY == 'create') {
                 sh 'terraform apply -auto-approve'
-              } else if (params.create_or_destroy == 'destroy') {
+              } else {
                 sh 'terraform destroy -auto-approve'
               }
             }
@@ -53,22 +49,29 @@ pipeline {
 
     stage('Generate Ansible Inventory') {
       when {
-        expression { return params.create_or_destroy == 'create' }
+        expression { params.CREATE_OR_DESTROY == 'create' }
       }
       steps {
-        sh '''
-          cd terraform
-          PUBLIC_IP=$(terraform output -raw ec2_public_ip)
+        withCredentials([[
+          $class: 'AmazonWebServicesCredentialsBinding',
+          credentialsId: 'aws-credentials'
+        ]]) {
+          sh '''
+            cd terraform
+            PUBLIC_IP=$(terraform output -raw ec2_public_ip)
 
-          echo "[web]" > ../ansible/inventory.ini
-          echo "$PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}" >> ../ansible/inventory.ini
-        '''
+            echo "[web]" > ../ansible/inventory.ini
+            echo "$PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}" >> ../ansible/inventory.ini
+
+            echo "✅ Generated inventory.ini with IP: $PUBLIC_IP"
+          '''
+        }
       }
     }
 
     stage('Run Ansible Playbook') {
       when {
-        expression { return params.create_or_destroy == 'create' }
+        expression { params.CREATE_OR_DESTROY == 'create' }
       }
       steps {
         dir("${ANSIBLE_DIR}") {
@@ -80,10 +83,10 @@ pipeline {
 
   post {
     success {
-      echo "✅ Infrastructure ${params.create_or_destroy} process completed successfully!"
+      echo '✅ Pipeline completed successfully!'
     }
     failure {
-      echo "❌ ${params.create_or_destroy} process failed. Check logs."
+      echo '❌ Pipeline failed. Please check the logs.'
     }
   }
 }
