@@ -1,61 +1,32 @@
 ---
-- name: Configure Web Server and Deploy App
-  hosts: web
+- name: Install Node.js 16 and optionally httpd on Amazon Linux 2
+  hosts: all
   become: yes
 
   vars:
-    app_dir: /var/www/myapp
-    repo_url: "https://github.com/nenavathsrinu/dev-cicd.git"
+    install_httpd: false  # ✅ Change to true if you want Apache installed
 
   tasks:
 
-    - name: Enable nginx via amazon-linux-extras
-      shell: |
-        amazon-linux-extras enable nginx1
-        yum clean metadata
-        yum install -y nginx
+    - name: Add Node.js 16.x repository
+      shell: curl -fsSL https://rpm.nodesource.com/setup_16.x | bash -
       args:
         executable: /bin/bash
 
-    - name: Install Git
+    - name: Install Node.js
       yum:
-        name: git
+        name: nodejs
         state: present
 
-    - name: Install Node.js 16.x using NodeSource
-      shell: |
-        curl -sL https://rpm.nodesource.com/setup_16.x | bash -
-        yum install -y nodejs
-      args:
-        executable: /bin/bash
+    - name: Optionally install httpd (Apache)
+      yum:
+        name: httpd
+        state: present
+      when: install_httpd
 
-    - name: Enable and start Nginx
-      systemd:
-        name: nginx
-        enabled: yes
+    - name: Start and enable httpd (if installed)
+      service:
+        name: httpd
         state: started
-
-    - name: Create application directory
-      file:
-        path: "{{ app_dir }}"
-        state: directory
-        owner: ec2-user
-        group: ec2-user
-        mode: '0755'
-
-    - name: Clone Git repo
-      git:
-        repo: "{{ repo_url }}"
-        dest: "{{ app_dir }}"
-        force: yes
-
-    - name: Install app dependencies (npm)
-      npm:
-        path: "{{ app_dir }}"
-        production: yes
-
-    - name: Start Node.js app with nohup
-      shell: |
-        nohup node {{ app_dir }}/server.js > /dev/null 2>&1 &
-      args:
-        executable: /bin/bash
+        enabled: true
+      when: install_httpd
