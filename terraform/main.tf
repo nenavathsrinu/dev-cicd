@@ -1,6 +1,5 @@
 provider "aws" {
   region  = var.aws_region
-  profile = "terraform" # Ensure this profile is configured in ~/.aws/credentials
 }
 
 resource "aws_key_pair" "jenkins_key" {
