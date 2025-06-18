@@ -9,6 +9,13 @@
 
   tasks:
 
+    - name: Enable nginx via amazon-linux-extras (for Amazon Linux 2)
+      shell: |
+        amazon-linux-extras enable nginx1
+        yum clean metadata
+      args:
+        executable: /bin/bash
+
     - name: Install Git, Node.js, and Nginx
       package:
         name:
