@@ -1,8 +1,14 @@
+---
 - name: Install Node.js 16 on Amazon Linux 2
-  hosts: web           # ✅ This matches [web] in inventory.ini
+  hosts: web
   become: yes
 
   tasks:
+    - name: Ensure curl is installed
+      yum:
+        name: curl
+        state: present
+
     - name: Add Node.js 16.x repository
       shell: curl -fsSL https://rpm.nodesource.com/setup_16.x | bash -
       args:
@@ -13,10 +19,10 @@
         name: nodejs
         state: present
 
-    - name: Verify Node.js version
+    - name: Check Node.js version
       command: node -v
       register: node_version
 
-    - name: Print Node.js version
+    - name: Display installed Node.js version
       debug:
-        var: node_version.stdout
+        msg: "Installed Node.js version is {{ node_version.stdout }}"
