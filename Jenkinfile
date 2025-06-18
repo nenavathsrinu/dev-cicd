@@ -77,7 +77,7 @@ pipeline {
       }
       steps {
         sh '''
-          chmod 600 ansible/linux-test.pem
+          chmod 600 /var/lib/jenkins/.ssh/id_rsa.pub
           export ANSIBLE_CONFIG=ansible/ansible.cfg
           ansible-playbook -i terraform/inventory.ini ansible/site.yml
         '''
