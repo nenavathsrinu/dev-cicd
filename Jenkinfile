@@ -29,8 +29,8 @@ pipeline {
             withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
               dir("${TF_DIR}") {
                 sh '''
-                  cp backend-ap-south-1.tf backend.tf
-                  terraform init -input=false
+                  cp backend/backend-ap-south-1.tf backend.tf
+                  terraform init
                   rm -f backend.tf
                 '''
               }
@@ -43,8 +43,8 @@ pipeline {
             withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
               dir("${TF_DIR}") {
                 sh '''
-                  cp backend-us-east-1.tf backend.tf
-                  terraform init -input=false
+                  cp backend/backend-us-east-1.tf backend.tf
+                  terraform init
                   rm -f backend.tf
                 '''
               }
