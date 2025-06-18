@@ -71,11 +71,3 @@
       args:
         executable: /bin/bash
 
-    - name: Make sure port 3000 is open (EC2 security group must also allow this)
-      firewalld:
-        port: 3000/tcp
-        permanent: yes
-        state: enabled
-        immediate: yes
-      when: ansible_facts['distribution'] == "Amazon"
-
