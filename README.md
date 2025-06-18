@@ -66,3 +66,6 @@ devops-cicd/
 ```bash
 git clone https://github.com/<your-username>/devops-cicd-pipeline.git
 cd devops-cicd-pipeline
+
+
+![alt text](image-1.png)
