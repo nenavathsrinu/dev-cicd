@@ -53,10 +53,12 @@ pipeline {
             script {
               if (params.ACTION == 'destroy') {
                 echo "🗑️ Destroying infrastructure..."
-                sh 'terraform destroy -auto-approve'
+                # sh 'terraform destroy -auto-approve'
+                sh 'terraform destroy -auto-approve -var="us-east-1.tfvars"'
               } else {
                 echo "🚀 Creating infrastructure..."
-                sh 'terraform apply -auto-approve'
+                # sh 'terraform apply -auto-approve'
+                sh 'terraform apply -auto-approve -var="us-east-1.tfvars"'
               }
             }
           }

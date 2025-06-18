@@ -1,0 +1,5 @@
+key_name         = "jenkins-key"
+public_key_path  = "/var/lib/jenkins/.ssh/id_rsa.pub"
+subnet_id        = "subnet-00a2cd997f317cf07"
+vpc_id           = "vpc-0b913f5da666cc761"
+ami_id           = "ami-0f3f13f145e66a0a3"

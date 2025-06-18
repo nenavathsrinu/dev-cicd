@@ -1,13 +1,12 @@
 variable "aws_region" {
   description = "AWS region"
   type        = string
-  default     = "ap-south-1"
+  default     = "us-east-1"
 }
 
 variable "ami_id" {
   description = "AMI ID for Amazon Linux 2"
   type        = string
-  default     = "ami-00b7ea845217da02c" # update if needed
 }
 
 variable "instance_type" {
