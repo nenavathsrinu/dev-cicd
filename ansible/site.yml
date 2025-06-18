@@ -1,13 +1,55 @@
-- hosts: web
-  become: true
+---
+- name: Configure Web Server and Deploy App
+  hosts: web
+  become: yes
+
+  vars:
+    app_dir: /var/www/myapp
+    repo_url: "https://github.com/nenavathsrinu/dev-cicd.git"
+
   tasks:
-    - name: Install NGINX
-      yum:
-        name: nginx
+
+    - name: Install required packages
+      amazon.aws.amazon_linux_extras:
+        name: epel
+        state: enabled
+
+    - name: Install Git, Node.js, and Nginx
+      package:
+        name:
+          - git
+          - nginx
+          - nodejs
+          - npm
         state: present
 
-    - name: Start NGINX
-      service:
+    - name: Enable and start Nginx
+      systemd:
         name: nginx
-        state: started
         enabled: yes
+        state: started
+
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+        mode: '0755'
+
+    - name: Clone Git repo
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        force: yes
+
+    - name: Install app dependencies (npm)
+      npm:
+        path: "{{ app_dir }}"
+        production: yes
+
+    - name: Start Node.js app with nohup
+      shell: |
+        nohup node {{ app_dir }}/server.js > /dev/null 2>&1 &
+      args:
+        executable: /bin/bash
