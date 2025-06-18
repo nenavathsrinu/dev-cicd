@@ -11,7 +11,7 @@ pipeline {
 
     stage('Checkout Code') {
       steps {
-        git branch: 'main', url: 'https://github.com/nenavathsrinu/devops-cicd-pipeline.git'
+        git branch: 'main', url: 'https://github.com/nenavathsrinu/dev-cicd.git'
       }
     }
 
@@ -54,7 +54,7 @@ pipeline {
 
   post {
     success {
-      echo '✅ Pipeline completed successfully!'
+      echo '✅ CI/CD Pipeline completed successfully!'
     }
     failure {
       echo '❌ Pipeline failed. Please check logs.'
