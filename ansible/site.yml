@@ -1,12 +1,10 @@
 ---
-- name: Install Node.js 16 and deploy app from GitHub
+- name: Deploy Node.js App on EC2
   hosts: web
   become: true
-  become_user: ec2-user
-
   vars:
     app_repo: "https://github.com/nenavathsrinu/dev-cicd.git"
-    app_path: "/home/ec2-user/dev-cicd"
+    app_dir: "/home/ec2-user/dev-cicd"
 
   tasks:
     - name: Install dependencies
@@ -19,59 +17,65 @@
         state: present
 
     - name: Download and install NVM
-      shell: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-      args:
-        executable: /bin/bash
-        chdir: /home/ec2-user
-
-    - name: Add NVM to bash profile
-      blockinfile:
-        path: /home/ec2-user/.bashrc
-        marker: "# {mark} ANSIBLE MANAGED BLOCK FOR NVM"
-        block: |
-          export NVM_DIR="$HOME/.nvm"
-          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-
-    - name: Load NVM and install Node.js 16
+      become_user: ec2-user
       shell: |
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+        echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.bashrc
+        echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.bashrc
+        echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> ~/.bashrc
         source ~/.bashrc
+        . ~/.nvm/nvm.sh
         nvm install 16
         nvm alias default 16
       args:
         executable: /bin/bash
 
-    - name: Clone the application repo
+    - name: Clone app repo
+      become_user: ec2-user
       git:
         repo: "{{ app_repo }}"
-        dest: "{{ app_path }}"
+        dest: "{{ app_dir }}"
         version: main
         force: yes
 
-    - name: Install Node.js dependencies
+    - name: Load NVM and install npm dependencies
+      become_user: ec2-user
       shell: |
+        export NVM_DIR="$HOME/.nvm"
         source ~/.bashrc
-        cd {{ app_path }}
+        . "$NVM_DIR/nvm.sh"
+        cd {{ app_dir }}
         npm install
       args:
         executable: /bin/bash
 
-    - name: Start the Node.js app
+    - name: Install PM2 globally
+      become_user: ec2-user
       shell: |
+        export NVM_DIR="$HOME/.nvm"
         source ~/.bashrc
-        cd {{ app_path }}
-        nohup node app.js > app.log 2>&1 &
+        . "$NVM_DIR/nvm.sh"
+        npm install -g pm2
       args:
         executable: /bin/bash
 
-    - name: Show deployed Node.js version
+    - name: Start app with PM2
+      become_user: ec2-user
       shell: |
+        export NVM_DIR="$HOME/.nvm"
         source ~/.bashrc
-        node -v
-      register: node_version
+        . "$NVM_DIR/nvm.sh"
+        cd {{ app_dir }}
+        pm2 start server.js --name dev-app
+        pm2 save
       args:
         executable: /bin/bash
 
-    - name: Display Node.js version
-      debug:
-        msg: "✅ Node.js version: {{ node_version.stdout }}"
+    - name: Make sure port 3000 is open (EC2 security group must also allow this)
+      firewalld:
+        port: 3000/tcp
+        permanent: yes
+        state: enabled
+        immediate: yes
+      when: ansible_facts['distribution'] == "Amazon"
+
