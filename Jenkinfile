@@ -2,12 +2,13 @@ pipeline {
   agent any
 
   parameters {
-    choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Choose whether to create or destroy the infrastructure')
+    choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Terraform action to perform')
   }
 
   environment {
-    AWS_REGION = 'ap-south-1'
-    TF_VAR_region = "${env.AWS_REGION}"
+    TF_VAR_key_name = 'jenkins-key'
+    TF_VAR_region = 'ap-south-1'
+    TF_VAR_instance_type = 't2.micro'
   }
 
   stages {
@@ -19,11 +20,12 @@ pipeline {
         ]]) {
           dir('terraform') {
             sh '''
-              terraform init -backend-config=bucket=lsg-terraform-s3-bucket \
-                             -backend-config=key=dev/devops-cicd/terraform.tfstate \
-                             -backend-config=region=ap-south-1 \
-                             -backend-config=dynamodb_table=terraform-lock \
-                             -backend-config=encrypt=true
+              terraform init \
+                -backend-config=bucket=lsg-terraform-s3-bucket \
+                -backend-config=key=dev/devops-cicd/terraform.tfstate \
+                -backend-config=region=ap-south-1 \
+                -backend-config=dynamodb_table=terraform-lock \
+                -backend-config=encrypt=true
             '''
           }
         }
@@ -40,7 +42,7 @@ pipeline {
             script {
               if (params.ACTION == 'create') {
                 sh 'terraform apply -auto-approve'
-              } else if (params.ACTION == 'destroy') {
+              } else {
                 sh 'terraform destroy -auto-approve'
               }
             }
@@ -49,23 +51,25 @@ pipeline {
       }
     }
 
-    stage('Wait for EC2 Boot and Get Public IP') {
+    stage('Wait for EC2 and Fetch IP') {
       when {
         expression { return params.ACTION == 'create' }
       }
       steps {
-        script {
-          echo "Waiting 60 seconds for EC2 instance to initialize..."
-          sleep(time: 60, unit: 'SECONDS')
-        }
+        echo 'Waiting 60 seconds for EC2 instance to initialize...'
+        sleep(time: 60, unit: 'SECONDS')
+
         withCredentials([[
           $class: 'AmazonWebServicesCredentialsBinding',
           credentialsId: 'aws-credentials'
         ]]) {
           dir('terraform') {
             script {
-              def public_ip = sh(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
-              writeFile file: '../ansible/inventory', text: "[web]\n${public_ip} ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/id_rsa_ansible"
+              def publicIp = sh(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
+              writeFile file: 'inventory.ini', text: """
+[web]
+${publicIp} ansible_user=ec2-user
+"""
             }
           }
         }
@@ -77,14 +81,12 @@ pipeline {
         expression { return params.ACTION == 'create' }
       }
       steps {
-        withCredentials([sshUserPrivateKey(credentialsId: 'ansible', keyFileVariable: 'ANSIBLE_KEY', usernameVariable: 'ANSIBLE_USER')]) {
-          dir('ansible') {
-            sh '''
-              cp $ANSIBLE_KEY ~/.ssh/id_rsa_ansible
-              chmod 600 ~/.ssh/id_rsa_ansible
-              ansible-playbook -i inventory site.yml
-            '''
-          }
+        withCredentials([
+          sshUserPrivateKey(credentialsId: 'ansible-key', keyFileVariable: 'SSH_KEY')
+        ]) {
+          sh '''
+            ansible-playbook -i terraform/inventory.ini ansible/site.yml --private-key=$SSH_KEY
+          '''
         }
       }
     }
@@ -93,9 +95,6 @@ pipeline {
   post {
     failure {
       echo "❌ Pipeline failed. Please check the logs."
-    }
-    success {
-      echo "✅ Pipeline completed successfully."
     }
   }
 }
