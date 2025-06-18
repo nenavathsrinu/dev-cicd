@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   parameters {
-    choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Create or destroy the infrastructure')
+    choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Choose whether to create or destroy infrastructure.')
     choice(name: 'REGION', choices: ['ap-south-1', 'us-east-1'], description: 'Select AWS Region')
   }
 
@@ -24,11 +24,13 @@ pipeline {
       steps {
         withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
           dir("${TF_DIR}") {
-            sh """
-              cp backend/backend-${params.REGION}.tf backend.tf
-              terraform init -reconfigure
-              rm -f backend.tf
-            """
+            script {
+              echo "🌍 Initializing backend for region: ${params.REGION}"
+              sh """
+                cp backend/backend-${params.REGION}.tf backend.tf
+                terraform init -reconfigure
+              """
+            }
           }
         }
       }
@@ -39,23 +41,14 @@ pipeline {
         withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
           dir("${TF_DIR}") {
             script {
-              def tfFile = "terraform-${params.REGION}.tfvars"
-
-              echo "🔁 Re-initializing backend before action..."
-              sh """
-                cp backend/backend-${params.REGION}.tf backend.tf
-                terraform init -reconfigure
-              """
-
+              def tfvars = "terraform-${params.REGION}.tfvars"
               if (params.ACTION == 'destroy') {
                 echo "🗑️ Destroying ${params.REGION} infrastructure..."
-                sh "terraform destroy -auto-approve -var-file=${tfFile}"
+                sh "terraform destroy -auto-approve -var-file=${tfvars}"
               } else {
                 echo "🚀 Creating ${params.REGION} infrastructure..."
-                sh "terraform apply -auto-approve -var-file=${tfFile}"
+                sh "terraform apply -auto-approve -var-file=${tfvars}"
               }
-
-              sh "rm -f backend.tf"
             }
           }
         }
@@ -101,6 +94,9 @@ ${publicIp} ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}
   }
 
   post {
+    always {
+      cleanWs()
+    }
     failure {
       echo "❌ Pipeline failed. Please check the logs."
     }
