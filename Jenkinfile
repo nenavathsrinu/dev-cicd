@@ -2,17 +2,15 @@ pipeline {
   agent any
 
   parameters {
-    choice(
-      name: 'ACTION',
-      choices: ['create', 'destroy'],
-      description: 'Choose whether to create or destroy the infrastructure.'
-    )
+    choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Choose whether to create or destroy the infrastructure.')
+    choice(name: 'REGION', choices: ['ap-south-1', 'us-east-1'], description: 'Select AWS Region')
   }
 
   environment {
     TF_DIR = 'terraform'
     ANSIBLE_DIR = 'ansible'
     SSH_KEY_PATH = '/var/lib/jenkins/.ssh/id_rsa'
+    TF_VAR_region = "${params.REGION}"
   }
 
   stages {
@@ -23,31 +21,15 @@ pipeline {
     }
 
     stage('Terraform Init') {
-      parallel {
-        stage('Init ap-south-1') {
-          steps {
-            withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
-              dir("${TF_DIR}") {
-                sh '''
-                  cp backend/backend-ap-south-1.tf backend.tf
-                  terraform init
-                  rm -f backend.tf
-                '''
-              }
-            }
-          }
-        }
-
-        stage('Init us-east-1') {
-          steps {
-            withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
-              dir("${TF_DIR}") {
-                sh '''
-                  cp backend/backend-us-east-1.tf backend.tf
-                  terraform init
-                  rm -f backend.tf
-                '''
-              }
+      steps {
+        withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
+          dir("${TF_DIR}") {
+            script {
+              sh """
+                cp backend/backend-${params.REGION}.tf backend.tf
+                terraform init -reconfigure
+                rm -f backend.tf
+              """
             }
           }
         }
@@ -55,40 +37,17 @@ pipeline {
     }
 
     stage('Terraform Apply/Destroy') {
-      parallel {
-        stage('ap-south-1 Infra') {
-          steps {
-            withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
-              dir("${TF_DIR}") {
-                script {
-                  def tfFile = "terraform-ap-south-1.tfvars"
-                  if (params.ACTION == 'destroy') {
-                    echo "🗑️ Destroying ap-south-1 infrastructure..."
-                    sh "terraform destroy -auto-approve -var-file=${tfFile}"
-                  } else {
-                    echo "🚀 Creating ap-south-1 infrastructure..."
-                    sh "terraform apply -auto-approve -var-file=${tfFile}"
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        stage('us-east-1 Infra') {
-          steps {
-            withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
-              dir("${TF_DIR}") {
-                script {
-                  def tfFile = "terraform-us-east-1.tfvars"
-                  if (params.ACTION == 'destroy') {
-                    echo "🗑️ Destroying us-east-1 infrastructure..."
-                    sh "terraform destroy -auto-approve -var-file=${tfFile}"
-                  } else {
-                    echo "🚀 Creating us-east-1 infrastructure..."
-                    sh "terraform apply -auto-approve -var-file=${tfFile}"
-                  }
-                }
+      steps {
+        withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
+          dir("${TF_DIR}") {
+            script {
+              def tfFile = "terraform-${params.REGION}.tfvars"
+              if (params.ACTION == 'destroy') {
+                echo "🗑️ Destroying ${params.REGION} infrastructure..."
+                sh "terraform destroy -auto-approve -var-file=${tfFile}"
+              } else {
+                echo "🚀 Creating ${params.REGION} infrastructure..."
+                sh "terraform apply -auto-approve -var-file=${tfFile}"
               }
             }
           }
