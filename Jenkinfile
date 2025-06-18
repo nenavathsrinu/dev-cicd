@@ -1,6 +1,14 @@
 pipeline {
   agent any
 
+  parameters {
+    choice(
+      name: 'ACTION',
+      choices: ['apply', 'destroy'],
+      description: 'Choose whether to apply or destroy the infrastructure'
+    )
+  }
+
   environment {
     TF_DIR = 'terraform'
     ANSIBLE_DIR = 'ansible'
@@ -15,35 +23,63 @@ pipeline {
       }
     }
 
-    stage('Terraform Init & Apply') {
+    stage('Terraform Init') {
       steps {
-        withCredentials([[
+        withCredentials([[ 
           $class: 'AmazonWebServicesCredentialsBinding',
           credentialsId: 'aws-credentials'
         ]]) {
           dir("${TF_DIR}") {
             sh 'terraform init'
-            sh 'terraform apply -auto-approve'
+          }
+        }
+      }
+    }
+
+    stage('Terraform Apply or Destroy') {
+      steps {
+        withCredentials([[ 
+          $class: 'AmazonWebServicesCredentialsBinding',
+          credentialsId: 'aws-credentials'
+        ]]) {
+          dir("${TF_DIR}") {
+            script {
+              if (params.ACTION == 'apply') {
+                sh 'terraform apply -auto-approve'
+              } else if (params.ACTION == 'destroy') {
+                sh 'terraform destroy -auto-approve'
+              }
+            }
           }
         }
       }
     }
 
     stage('Generate Ansible Inventory') {
+      when {
+        expression { params.ACTION == 'apply' }
+      }
       steps {
-        sh '''
-          cd terraform
-          PUBLIC_IP=$(terraform output -raw ec2_public_ip)
+        script {
+          def publicIp = sh(
+            script: "cd ${TF_DIR} && terraform output -raw ec2_public_ip",
+            returnStdout: true
+          ).trim()
 
-          echo "[web]" > ../ansible/inventory.ini
-          echo "$PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}" >> ../ansible/inventory.ini
+          writeFile file: "${ANSIBLE_DIR}/inventory.ini", text: """
+[web]
+${publicIp} ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}
+"""
 
-          echo "✅ Generated inventory.ini with IP: $PUBLIC_IP"
-        '''
+          echo "✅ Generated inventory.ini with IP: ${publicIp}"
+        }
       }
     }
 
     stage('Run Ansible Playbook') {
+      when {
+        expression { params.ACTION == 'apply' }
+      }
       steps {
         dir("${ANSIBLE_DIR}") {
           sh 'ansible-playbook -i inventory.ini site.yml'
@@ -54,10 +90,10 @@ pipeline {
 
   post {
     success {
-      echo '✅ CI/CD Pipeline completed successfully!'
+      echo "✅ Pipeline completed successfully with ACTION: ${params.ACTION}"
     }
     failure {
-      echo '❌ Pipeline failed. Please check logs.'
+      echo "❌ Pipeline failed during ACTION: ${params.ACTION}. Please check logs."
     }
   }
 }
