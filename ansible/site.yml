@@ -1,5 +1,5 @@
 - name: Install Node.js 16 on Amazon Linux 2
-  hosts: webservers
+  hosts: web           # ✅ This matches [web] in inventory.ini
   become: yes
 
   tasks:
