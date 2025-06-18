@@ -2,18 +2,12 @@
 - name: Configure Web Server and Deploy App
   hosts: web
   become: yes
-  collections:
-    - amazon.aws
+
   vars:
     app_dir: /var/www/myapp
     repo_url: "https://github.com/nenavathsrinu/dev-cicd.git"
 
   tasks:
-
-    - name: Install required packages
-      amazon.aws.amazon_linux_extras:
-        name: epel
-        state: enabled
 
     - name: Install Git, Node.js, and Nginx
       package:
