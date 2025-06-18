@@ -52,6 +52,8 @@ resource "aws_instance" "web" {
 
   tags = {
     Name = "WebServer-TF"
+    Role = "Web"
+    Environment = "Dev"
   }
 }
 
