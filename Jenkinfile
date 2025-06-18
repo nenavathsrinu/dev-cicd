@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   parameters {
-    choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Choose whether to create or destroy the infrastructure.')
+    choice(name: 'ACTION', choices: ['create', 'destroy'], description: 'Create or destroy the infrastructure')
     choice(name: 'REGION', choices: ['ap-south-1', 'us-east-1'], description: 'Select AWS Region')
   }
 
@@ -24,13 +24,11 @@ pipeline {
       steps {
         withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials' ]]) {
           dir("${TF_DIR}") {
-            script {
-              sh """
-                cp backend/backend-${params.REGION}.tf backend.tf
-                terraform init -reconfigure
-                rm -f backend.tf
-              """
-            }
+            sh """
+              cp backend/backend-${params.REGION}.tf backend.tf
+              terraform init -reconfigure
+              rm -f backend.tf
+            """
           }
         }
       }
@@ -42,6 +40,13 @@ pipeline {
           dir("${TF_DIR}") {
             script {
               def tfFile = "terraform-${params.REGION}.tfvars"
+
+              echo "🔁 Re-initializing backend before action..."
+              sh """
+                cp backend/backend-${params.REGION}.tf backend.tf
+                terraform init -reconfigure
+              """
+
               if (params.ACTION == 'destroy') {
                 echo "🗑️ Destroying ${params.REGION} infrastructure..."
                 sh "terraform destroy -auto-approve -var-file=${tfFile}"
@@ -49,6 +54,8 @@ pipeline {
                 echo "🚀 Creating ${params.REGION} infrastructure..."
                 sh "terraform apply -auto-approve -var-file=${tfFile}"
               }
+
+              sh "rm -f backend.tf"
             }
           }
         }
@@ -84,10 +91,10 @@ ${publicIp} ansible_user=ec2-user ansible_ssh_private_key_file=${SSH_KEY_PATH}
       }
       steps {
         dir("${ANSIBLE_DIR}") {
-          sh '''
+          sh """
             chmod 600 ${SSH_KEY_PATH}
             ansible-playbook -i inventory.ini site.yml
-          '''
+          """
         }
       }
     }
